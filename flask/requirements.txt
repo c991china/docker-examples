@@ -1,0 +1,5 @@
+# Pinned on purpose. I have been burned by a floating dep breaking a build at
+# 11pm before a demo.
+Flask==3.0.3
+gunicorn==22.0.0
+redis==5.0.4
