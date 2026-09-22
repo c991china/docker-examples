@@ -1,0 +1,35 @@
+# Minimal but valid scrape config. Run with:
+#   docker run --rm -p 9090:9090 \
+#     -v "$PWD/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro" \
+#     prom/prometheus:v2.51.2
+#
+# In a compose stack, replace the host.docker.internal targets with the service
+# names (e.g. "web:8000") and put prometheus on the same network.
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    env: dev
+
+scrape_configs:
+  # Prometheus scraping itself. Always keep this.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
+
+  # The flask demo. You need a /metrics endpoint for this to return anything
+  # useful; add prometheus-flask-exporter if you want real numbers.
+  - job_name: flask-demo
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - "host.docker.internal:8000"
+        labels:
+          service: flask-demo
+
+  # Node exporter if you run one. Commented out because most laptops don't.
+  # - job_name: node
+  #   static_configs:
+  #     - targets: ["host.docker.internal:9100"]
