@@ -1,11 +1,52 @@
-# 多阶段构建示例（Python）
+# Multistage build for a typical Python service.
+# The trick: compile wheels in a fat builder, install them into a slim runtime
+# so gcc and the -dev headers never ship to production.
+
 FROM python:3.12-slim AS builder
-WORKDIR /app
+
+# build deps only. Keep them out of the final image.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        build-essential \
+        libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /build
+
+# Copy just the requirement file first. This layer is cached until the deps
+# actually change, so editing app code does NOT re-download everything.
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+
+RUN pip install --upgrade pip \
+    && pip wheel --no-cache-dir --wheel-dir /wheels -r requirements.txt
+
 
 FROM python:3.12-slim AS runtime
+
+# libpq5 is the runtime lib; we do not need libpq-dev or gcc here.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        libpq5 \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 10001 appuser
+
 WORKDIR /app
-COPY --from=builder /usr/local/lib/python3.12/site-packages /usr/local/lib/python3.12/site-packages
-COPY . .
-CMD ["python", "app.py"]
+
+COPY --from=builder /wheels /wheels
+COPY requirements.txt .
+
+RUN pip install --no-cache-dir --no-index --find-links=/wheels -r requirements.txt \
+    && rm -rf /wheels
+
+COPY --chown=appuser:appuser . .
+
+# Don't run as root. This one line is why a container escape is annoying
+# instead of trivial.
+USER appuser
+
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PORT=8000
+
+EXPOSE 8000
+
+# gunicorn, not the dev server. 2 workers is fine for a demo.
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "2", "--access-logfile", "-", "app:app"]
