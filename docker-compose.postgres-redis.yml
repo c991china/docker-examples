@@ -1,0 +1,47 @@
+# Postgres + redis for local development. Not for production.
+# Passwords are dev-only and hardcoded on purpose; do not copy this to prod.
+#
+# Usage:
+#   docker compose -f docker-compose.postgres-redis.yml up -d
+#   docker compose -f docker-compose.postgres-redis.yml exec postgres psql -U app -d app
+#
+# Note: postgres only runs init scripts when the data dir is EMPTY. If you edit
+# init.sql and nothing changes, that's why: `docker compose down -v` first.
+
+services:
+  postgres:
+    image: postgres:16.2-alpine
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: devpass
+      POSTGRES_DB: app
+      # speeds up initdb a bit in throwaway environments
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U app -d app"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    volumes:
+      - redisdata:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
